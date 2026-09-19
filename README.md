@@ -1,14 +1,17 @@
 # github-stabilizator
 
-A lightweight, automated GitHub repository metadata stabilization tool built with Python.
+A lightweight, automated GitHub repository metadata stabilization tool built with Python that updates repository descriptions, topics, READMEs, and missing licenses.
 
 ## Features
-- Automates repository metadata updates
-- Ensures consistent configuration across repositories
-- Built with Python
+- Automates repository metadata updates by scanning and applying changes
+- Manages and normalizes repository topics and descriptions
+- Handles automatic README rewriting and missing MIT license injection using the GitHub API
+- Integrates with the Gemini API for metadata generation and model selection
 
 ## Tech Stack
 - Python
+- Requests
+- Python-dotenv
 
 ## Installation
 ```bash
