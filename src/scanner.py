@@ -15,6 +15,79 @@ PLACEHOLDER_PATTERN = re.compile(
     r"<your[_-]?username>|your[_-]?username", re.IGNORECASE
 )
 
+EXCLUDED_DIR_PARTS = {
+    "node_modules", "dist", "build", ".git", "vendor", "coverage", ".next",
+    "out", "target", "venv", ".venv", "__pycache__", "assets", "public",
+    ".pytest_cache", "reports",
+}
+EXCLUDED_FILE_SUFFIXES = (
+    ".lock", ".min.js", ".map", ".png", ".jpg", ".jpeg", ".gif", ".svg",
+    ".ico", ".woff", ".woff2", ".ttf", ".eot", ".zip", ".gz",
+)
+MANIFEST_NAMES = {
+    "package.json", "pyproject.toml", "requirements.txt", "go.mod",
+    "cargo.toml", "composer.json", "gemfile", "pom.xml",
+}
+ENTRY_HINTS = (
+    "main.", "index.", "app.", "server.", "cli.", "__init__.py",
+)
+CODE_SUFFIXES = (
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".rb", ".java",
+    ".c", ".cpp", ".cs", ".php", ".swift", ".kt",
+)
+MAX_CODE_FILES = 8
+MAX_FILE_CHARS = 3000
+MAX_TOTAL_CHARS = 14000
+
+
+def _is_candidate(path: str, size: int) -> bool:
+    if size > 60_000:
+        return False
+    parts = path.split("/")
+    if any(p in EXCLUDED_DIR_PARTS for p in parts):
+        return False
+    lower = path.lower()
+    if lower.endswith(EXCLUDED_FILE_SUFFIXES):
+        return False
+    base = parts[-1].lower()
+    if base in MANIFEST_NAMES:
+        return True
+    if base.endswith(ENTRY_HINTS) and lower.endswith(CODE_SUFFIXES):
+        return True
+    return lower.endswith(CODE_SUFFIXES)
+
+
+def _rank(path: str) -> tuple[int, str]:
+    base = path.split("/")[-1].lower()
+    if base in MANIFEST_NAMES:
+        return (0, path)
+    if base.startswith(ENTRY_HINTS):
+        return (1, path)
+    return (2, path)
+
+
+def _gather_code_excerpts(client: GitHubClient, owner: str, name: str, branch: str | None) -> str:
+    if not branch:
+        return ""
+    tree = client.get_tree(owner, name, branch)
+    candidates = sorted(
+        (e for e in tree if _is_candidate(e["path"], e.get("size", 0))),
+        key=lambda e: _rank(e["path"]),
+    )[:MAX_CODE_FILES]
+
+    chunks: list[str] = []
+    total = 0
+    for entry in candidates:
+        if total >= MAX_TOTAL_CHARS:
+            break
+        file_data = client.get_file(owner, name, entry["path"])
+        if not file_data:
+            continue
+        content = file_data["content"][:MAX_FILE_CHARS]
+        chunks.append(f"### {entry['path']}\n{content}")
+        total += len(content)
+    return "\n\n".join(chunks)
+
 
 def _gather_repo_state(client: GitHubClient, owner: str, repo: dict[str, Any]) -> dict[str, Any]:
     name = repo["name"]
@@ -23,6 +96,7 @@ def _gather_repo_state(client: GitHubClient, owner: str, repo: dict[str, Any]) -
     license_info = client.get_license(owner, name)
     releases = client.list_releases(owner, name)
     environments = client.list_environments(owner, name)
+    code_excerpts = _gather_code_excerpts(client, owner, name, repo.get("default_branch"))
 
     return {
         "name": name,
@@ -37,6 +111,7 @@ def _gather_repo_state(client: GitHubClient, owner: str, repo: dict[str, Any]) -
         "license": license_info["license"]["spdx_id"] if license_info else None,
         "releases": [{"id": r["id"], "tag_name": r["tag_name"], "name": r["name"]} for r in releases],
         "environments": [e["name"] for e in environments],
+        "code_excerpts": code_excerpts,
     }
 
 
@@ -97,6 +172,8 @@ def run_dry_run(
         repos = [r for r in repos if r["name"] == only]
         if not repos:
             raise SystemExit(f"No repo named '{only}' found for {owner}.")
+    else:
+        repos = [r for r in repos if r["name"].lower() != owner.lower()]
 
     results: list[dict[str, Any]] = []
 

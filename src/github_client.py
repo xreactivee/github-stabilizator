@@ -116,6 +116,13 @@ class GitHubClient:
         if resp.status_code not in (200, 201):
             raise GitHubError(f"PUT contents/{path} failed: {resp.status_code} {resp.text}")
 
+    def get_tree(self, owner: str, repo: str, branch: str) -> list[dict[str, Any]]:
+        resp = self._get(f"/repos/{owner}/{repo}/git/trees/{branch}", params={"recursive": "1"})
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        return [e for e in data.get("tree", []) if e.get("type") == "blob"]
+
     def get_license(self, owner: str, repo: str) -> dict[str, Any] | None:
         resp = self._get(f"/repos/{owner}/{repo}/license")
         if resp.status_code == 404:

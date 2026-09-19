@@ -49,6 +49,7 @@ def normalize_topic(topic: str) -> str:
 
 def build_prompt(context: dict[str, Any], category_override: str | None = None) -> str:
     readme_excerpt = (context.get("readme") or "")[:6000]
+    code_excerpts = context.get("code_excerpts") or "(no source files fetched)"
     override_block = (
         f"\nIMPORTANT OVERRIDE: classify this repo as category=\"{category_override}\" "
         f"regardless of your own judgement, and follow that category's description "
@@ -78,6 +79,17 @@ no markdown fences, no commentary, matching this schema:
   <tech stack, comma separated>.".
 - "other": only if neither pattern genuinely fits (rare). Keep description in the same
   spirit: one sentence, no marketing fluff, no emoji.
+
+## Content accuracy rule (applies to description AND every README section)
+The "what it is" part of the description, and every bullet under Features, MUST state
+what the project actually DOES — derived from the source excerpts below (function/route/
+component names, CLI commands, API calls, data it reads or writes) — not just its platform
+or tech stack. A generic label like "desktop application", "web app", "script", or "tool"
+is NEVER acceptable on its own — always follow it with the concrete behavior, e.g. instead
+of "a desktop application built with Electron" write "a desktop app built with Electron
+that <does X, using Y>". If the source excerpts genuinely don't reveal enough to say more
+than the generic label, say so explicitly in "notes" instead of inventing functionality.
+Never guess or fabricate a feature that isn't backed by the README or the source excerpts.
 
 ## Topics rule
 Produce 6-7 topics. Every topic MUST be genuinely and specifically about THIS
@@ -112,5 +124,11 @@ synonym: {CANONICAL_TOPIC_SPELLINGS}
 - current README (may be empty or messy, this is what you are replacing):
 ---
 {readme_excerpt}
+---
+- source file excerpts (manifest + entry-point files, truncated; this is your primary
+  evidence for what the project actually does — read them before writing the description
+  and Features section):
+---
+{code_excerpts}
 ---
 """
